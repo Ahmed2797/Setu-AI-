@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎤 Setu AI Translator</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { width: 100%; max-width: 600px; background: #1e293b; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        button { padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        #startBtn { background: #22c55e; color: white; }
+        #stopBtn { background: #ef4444; color: white; display: none; }
+        #status { font-size: 0.9em; color: #94a3b8; margin-bottom: 10px; }
+        .chat-box { height: 400px; overflow-y: auto; background: #0f172a; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #334155; }
+        .msg { padding: 10px 15px; border-radius: 10px; max-width: 85%; position: relative; }
+        .user-msg { align-self: flex-end; background: #3b82f6; border-bottom-right-radius: 2px; }
+        .ai-msg { align-self: flex-start; background: #334155; border-bottom-left-radius: 2px; border: 1px solid #475569; }
+        .time-tag { font-size: 0.7em; color: #94a3b8; margin-top: 5px; display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎤 Setu AI</h1>
+    <div id="status">Status: Disconnected</div>
+    
+    <div class="controls">
+        <button id="startBtn" onclick="start()">Start Recording</button>
+        <button id="stopBtn" onclick="stop()">Stop Recording</button>
+    </div>
+
+    <div class="chat-box" id="chatBox">
+        </div>
+</div>
+
+<script>
+let websocket;
+let mediaRecorder;
+const chatBox = document.getElementById("chatBox");
+const status = document.getElementById("status");
+
+async function start() {
+    websocket = new WebSocket(`ws://${window.location.host}/ws`);
+    websocket.binaryType = "blob";
+
+    websocket.onopen = async () => {
+        status.innerText = "Status: Live (Listening...)";
+        document.getElementById("startBtn").style.display = "none";
+        document.getElementById("stopBtn").style.display = "inline-block";
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        
+        mediaRecorder.ondataavailable = (ev) => {
+            if (ev.data.size > 0 && websocket.readyState === 1) websocket.send(ev.data);
+        };
+        
+        mediaRecorder.start(3000); // 3-second chunks
+    };
+
+    websocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        addMessage(data.user_text, true);
+        addMessage(data.ai_text, false, data.proc_time);
+        
+        // Play audio
+        const audio = new Audio("data:audio/mp3;base64," + data.audio);
+        audio.play();
+    };
+
+    websocket.onclose = () => {
+        status.innerText = "Status: Disconnected";
+        stop();
+    };
+}
+
+function stop() {
+    if (mediaRecorder) mediaRecorder.stop();
+    if (websocket) websocket.close();
+    document.getElementById("startBtn").style.display = "inline-block";
+    document.getElementById("stopBtn").style.display = "none";
+}
+
+function addMessage(text, isUser, time = null) {
+    const div = document.createElement("div");
+    div.className = `msg ${isUser ? 'user-msg' : 'ai-msg'}`;
+    div.innerText = text;
+    
+    if (time) {
+        const span = document.createElement("span");
+        span.className = "time-tag";
+        span.innerText = `Processed in ${time}s`;
+        div.appendChild(span);
+    }
+    
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+</script>
+</body>
+</html>
